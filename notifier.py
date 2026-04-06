@@ -178,7 +178,7 @@ def _send_gmail(
     article: dict[str, str],
 ) -> bool:
     """Gmailでメール通知を送信する."""
-    subject = f"LOG OITA 新着:「{article['title']}」"
+    subject = f"「{article['title']}」"
 
     lines = [
         "LOG OITA 新着記事\n",
