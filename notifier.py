@@ -21,7 +21,7 @@ from google import genai
 
 from instagram_search import search_instagram
 from link_extractor import extract_social_links
-from youtube_search import extract_shop_name, search_youtube
+from youtube_search import extract_shop_name
 
 load_dotenv()
 
@@ -107,28 +107,22 @@ def _summarize_with_gemini(client: genai.Client, text: str) -> str:
 def _collect_social_links(
     content_html: str, title: str, gemini_client: genai.Client | None = None,
 ) -> dict[str, list[str]]:
-    """記事からInstagram/YouTubeリンクを3段階で収集する.
+    """記事からInstagramリンクを収集する.
 
     1. 記事HTML内の埋め込み/リンクを抽出
-    2. YouTube API で店名検索（見つからない場合）
-    3. Gemini APIでInstagramを補完（見つからない場合）
+    2. Gemini APIでInstagramを補完（見つからない場合）
     """
     # ステップ1: 記事内リンク抽出
     links = extract_social_links(content_html)
     instagram = links["instagram"]
-    youtube = links["youtube"]
 
     shop_name = extract_shop_name(title)
 
-    # ステップ2: YouTube APIで補完
-    if not youtube and shop_name:
-        youtube = search_youtube(shop_name, max_results=1)
-
-    # ステップ3: Gemini APIでInstagram補完
+    # ステップ2: Gemini APIでInstagram補完
     if not instagram and shop_name:
         instagram = search_instagram(shop_name, gemini_client)
 
-    return {"instagram": instagram, "youtube": youtube}
+    return {"instagram": instagram}
 
 
 def _fetch_new_articles(
@@ -172,7 +166,6 @@ def _fetch_new_articles(
             "url": url,
             "summary": summary,
             "instagram": social["instagram"],
-            "youtube": social["youtube"],
         })
 
     return new_articles
@@ -197,10 +190,6 @@ def _send_gmail(
     if article.get("instagram"):
         for ig_url in article["instagram"][:2]:
             lines.append(f"Instagram: {ig_url}")
-
-    if article.get("youtube"):
-        for yt_url in article["youtube"][:2]:
-            lines.append(f"YouTube: {yt_url}")
 
     body = "\n".join(lines)
 
