@@ -130,6 +130,9 @@ def _fetch_new_articles(
         plain_text = _extract_text(content_html)
         summary = _summarize_with_gemini(gemini_client, plain_text)
 
+        # Gemini無料枠: 15リクエスト/分 → 5秒間隔で安全に収める
+        time.sleep(5)
+
         new_articles.append({
             "title": title,
             "url": url,
