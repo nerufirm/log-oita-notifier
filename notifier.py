@@ -104,12 +104,14 @@ def _summarize_with_gemini(client: genai.Client, text: str) -> str:
     return text[:MAX_SUMMARY_LENGTH - 1] + "…"
 
 
-def _collect_social_links(content_html: str, title: str) -> dict[str, list[str]]:
+def _collect_social_links(
+    content_html: str, title: str, gemini_client: genai.Client | None = None,
+) -> dict[str, list[str]]:
     """記事からInstagram/YouTubeリンクを3段階で収集する.
 
     1. 記事HTML内の埋め込み/リンクを抽出
     2. YouTube API で店名検索（見つからない場合）
-    3. Google検索でInstagramを補完（見つからない場合）
+    3. Gemini APIでInstagramを補完（見つからない場合）
     """
     # ステップ1: 記事内リンク抽出
     links = extract_social_links(content_html)
@@ -122,9 +124,9 @@ def _collect_social_links(content_html: str, title: str) -> dict[str, list[str]]
     if not youtube and shop_name:
         youtube = search_youtube(shop_name, max_results=1)
 
-    # ステップ3: Google検索でInstagram補完
+    # ステップ3: Gemini APIでInstagram補完
     if not instagram and shop_name:
-        instagram = search_instagram(shop_name)
+        instagram = search_instagram(shop_name, gemini_client)
 
     return {"instagram": instagram, "youtube": youtube}
 
@@ -163,7 +165,7 @@ def _fetch_new_articles(
         time.sleep(10)
 
         # ソーシャルリンク収集（3段階）
-        social = _collect_social_links(content_html, title)
+        social = _collect_social_links(content_html, title, gemini_client)
 
         new_articles.append({
             "title": title,

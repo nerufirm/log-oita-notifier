@@ -1,49 +1,44 @@
-"""Google Custom Search API でInstagramアカウントを検索するモジュール."""
+"""Gemini APIでInstagramアカウントを検索するモジュール."""
 
 import logging
-import os
+import re
 
-import requests
+from google import genai
 
 logger = logging.getLogger(__name__)
 
-GOOGLE_SEARCH_URL = "https://www.googleapis.com/customsearch/v1"
 
-
-def search_instagram(query: str) -> list[str]:
-    """Google Custom Search APIでInstagramの関連ページを検索する.
+def search_instagram(query: str, gemini_client: genai.Client | None = None) -> list[str]:
+    """Gemini APIで店名からInstagramアカウントURLを推測する.
 
     Args:
-        query: 検索クエリ（例: "食堂ごはんと 大分"）
+        query: 店名（例: "食堂ごはんと"）
+        gemini_client: Gemini APIクライアント
 
     Returns:
-        Instagram URLのリスト。APIキー未設定や取得失敗時は空リスト。
+        Instagram URLのリスト。取得失敗時は空リスト。
     """
-    api_key = os.environ.get("GOOGLE_SEARCH_API_KEY", "")
-    search_engine_id = os.environ.get("GOOGLE_SEARCH_ENGINE_ID", "")
-
-    if not api_key or not search_engine_id:
-        logger.info("Google検索APIキーが未設定のためInstagram検索をスキップ")
+    if gemini_client is None:
+        logger.info("Geminiクライアント未設定のためInstagram検索をスキップ")
         return []
 
-    params = {
-        "key": api_key,
-        "cx": search_engine_id,
-        "q": f"{query} 大分 site:instagram.com",
-        "num": 3,
-    }
-
     try:
-        response = requests.get(GOOGLE_SEARCH_URL, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+        response = gemini_client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=(
+                f"「{query}」という大分県のお店のInstagramアカウントURLを教えてください。"
+                "確実に存在するURLのみを1つ返してください。"
+                "わからない場合は「なし」とだけ答えてください。"
+                "URL以外の説明は不要です。"
+            ),
+        )
+        text = response.text.strip()
 
-        urls = []
-        for item in data.get("items", []):
-            link = item.get("link", "")
-            if "instagram.com" in link:
-                urls.append(link)
-        return urls
-    except requests.RequestException:
-        logger.exception("Google検索でInstagram検索に失敗: %s", query)
+        if "なし" in text or "わかりません" in text or "不明" in text:
+            return []
+
+        urls = re.findall(r"https?://(?:www\.)?instagram\.com/[a-zA-Z0-9_.]+/?", text)
+        return urls[:1]
+    except Exception:
+        logger.exception("Gemini APIでInstagram検索に失敗: %s", query)
         return []
