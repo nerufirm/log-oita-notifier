@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 RSS_URL = "https://log-oita.com/feed/"
 STATE_FILE = Path(__file__).parent / "last_seen.json"
-MAX_SUMMARY_LENGTH = 20
+MAX_SUMMARY_LENGTH = 250
 
 
 def _load_last_seen() -> set[str]:
@@ -72,7 +72,7 @@ def _summarize_with_gemini(client: genai.Client, text: str) -> str:
         try:
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
-                contents=f"以下の記事を20文字以内の日本語で要約してください。要約のみを出力してください。\n\n{text}",
+                contents=f"以下の記事を250文字以内の日本語で要約してください。要約のみを出力してください。\n\n{text}",
             )
             summary = response.text.strip()
             if len(summary) > MAX_SUMMARY_LENGTH:
