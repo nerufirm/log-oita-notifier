@@ -1,7 +1,7 @@
 """LOG OITA 新着記事通知スクリプト.
 
 https://log-oita.com/ のRSSフィードを監視し、
-新着記事をGemini APIで20文字に要約してGmailに通知する。
+新着記事をGemini APIで250文字に要約、Instagram/YouTubeリンク付きでGmailに通知する。
 """
 
 import json
@@ -18,6 +18,10 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from google import genai
+
+from instagram_search import search_instagram
+from link_extractor import extract_social_links
+from youtube_search import extract_shop_name, search_youtube
 
 load_dotenv()
 
@@ -100,6 +104,31 @@ def _summarize_with_gemini(client: genai.Client, text: str) -> str:
     return text[:MAX_SUMMARY_LENGTH - 1] + "…"
 
 
+def _collect_social_links(content_html: str, title: str) -> dict[str, list[str]]:
+    """記事からInstagram/YouTubeリンクを3段階で収集する.
+
+    1. 記事HTML内の埋め込み/リンクを抽出
+    2. YouTube API で店名検索（見つからない場合）
+    3. Google検索でInstagramを補完（見つからない場合）
+    """
+    # ステップ1: 記事内リンク抽出
+    links = extract_social_links(content_html)
+    instagram = links["instagram"]
+    youtube = links["youtube"]
+
+    shop_name = extract_shop_name(title)
+
+    # ステップ2: YouTube APIで補完
+    if not youtube and shop_name:
+        youtube = search_youtube(shop_name, max_results=1)
+
+    # ステップ3: Google検索でInstagram補完
+    if not instagram and shop_name:
+        instagram = search_instagram(shop_name)
+
+    return {"instagram": instagram, "youtube": youtube}
+
+
 def _fetch_new_articles(
     seen_urls: set[str], gemini_client: genai.Client,
 ) -> list[dict[str, str]]:
@@ -133,10 +162,15 @@ def _fetch_new_articles(
         # Gemini無料枠: 15リクエスト/分 → 10秒間隔で確実に収める
         time.sleep(10)
 
+        # ソーシャルリンク収集（3段階）
+        social = _collect_social_links(content_html, title)
+
         new_articles.append({
             "title": title,
             "url": url,
             "summary": summary,
+            "instagram": social["instagram"],
+            "youtube": social["youtube"],
         })
 
     return new_articles
@@ -151,12 +185,22 @@ def _send_gmail(
     """Gmailでメール通知を送信する."""
     subject = f"LOG OITA 新着:「{article['title']}」"
 
-    body = (
-        f"LOG OITA 新着記事\n\n"
-        f"「{article['title']}」\n\n"
-        f"{article['summary']}\n\n"
-        f"{article['url']}"
-    )
+    lines = [
+        "LOG OITA 新着記事\n",
+        f"「{article['title']}」\n",
+        f"{article['summary']}\n",
+        f"記事: {article['url']}",
+    ]
+
+    if article.get("instagram"):
+        for ig_url in article["instagram"][:2]:
+            lines.append(f"Instagram: {ig_url}")
+
+    if article.get("youtube"):
+        for yt_url in article["youtube"][:2]:
+            lines.append(f"YouTube: {yt_url}")
+
+    body = "\n".join(lines)
 
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
