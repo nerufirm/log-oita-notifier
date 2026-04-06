@@ -58,7 +58,7 @@ def _extract_text(html: str) -> str:
 
 
 GEMINI_MAX_RETRIES = 3
-GEMINI_RETRY_WAIT_SECONDS = 40
+GEMINI_RETRY_WAIT_SECONDS = 60
 
 
 def _summarize_with_gemini(client: genai.Client, text: str) -> str:
@@ -130,8 +130,8 @@ def _fetch_new_articles(
         plain_text = _extract_text(content_html)
         summary = _summarize_with_gemini(gemini_client, plain_text)
 
-        # Gemini無料枠: 15リクエスト/分 → 5秒間隔で安全に収める
-        time.sleep(5)
+        # Gemini無料枠: 15リクエスト/分 → 10秒間隔で確実に収める
+        time.sleep(10)
 
         new_articles.append({
             "title": title,
