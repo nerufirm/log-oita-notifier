@@ -1,14 +1,16 @@
 """LOG OITA 新着記事通知スクリプト.
 
 https://log-oita.com/ のRSSフィードを監視し、
-新着記事をGemini APIで20文字に要約してGoogle Chatに通知する。
+新着記事をGemini APIで20文字に要約してGmailに通知する。
 """
 
 import json
 import logging
 import os
 import re
+import smtplib
 import time
+from email.mime.text import MIMEText
 from pathlib import Path
 
 import feedparser
@@ -137,37 +139,47 @@ def _fetch_new_articles(
     return new_articles
 
 
-def _send_to_google_chat(webhook_url: str, article: dict[str, str]) -> bool:
-    """Google Chatにメッセージを送信する."""
-    message = (
-        f"📰 *LOG OITA 新着記事*\n\n"
+def _send_gmail(
+    smtp_user: str,
+    smtp_password: str,
+    to_email: str,
+    article: dict[str, str],
+) -> bool:
+    """Gmailでメール通知を送信する."""
+    subject = f"LOG OITA 新着:「{article['title']}」"
+
+    body = (
+        f"LOG OITA 新着記事\n\n"
         f"「{article['title']}」\n\n"
         f"{article['summary']}\n\n"
-        f"🔗 {article['url']}"
+        f"{article['url']}"
     )
 
-    payload = {"text": message}
+    msg = MIMEText(body, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = smtp_user
+    msg["To"] = to_email
 
     try:
-        response = requests.post(
-            webhook_url,
-            json=payload,
-            headers={"Content-Type": "application/json; charset=UTF-8"},
-            timeout=30,
-        )
-        response.raise_for_status()
-        logger.info("通知送信成功: %s", article["title"])
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        logger.info("Gmail通知送信成功: %s", article["title"])
         return True
-    except requests.RequestException:
-        logger.exception("Google Chat通知に失敗: %s", article["title"])
+    except smtplib.SMTPException:
+        logger.exception("Gmail通知に失敗: %s", article["title"])
         return False
 
 
 def main() -> None:
     """メイン処理."""
-    webhook_url = os.environ.get("GOOGLE_CHAT_WEBHOOK_URL", "")
-    if not webhook_url:
-        logger.error("環境変数 GOOGLE_CHAT_WEBHOOK_URL が未設定です")
+    smtp_user = os.environ.get("GMAIL_ADDRESS", "")
+    smtp_password = os.environ.get("GMAIL_APP_PASSWORD", "")
+    to_email = os.environ.get("NOTIFY_TO_EMAIL", smtp_user)
+
+    if not smtp_user or not smtp_password:
+        logger.error("環境変数 GMAIL_ADDRESS / GMAIL_APP_PASSWORD が未設定です")
         return
 
     gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -189,7 +201,7 @@ def main() -> None:
     logger.info("新着記事: %d 件", len(new_articles))
 
     for article in new_articles:
-        success = _send_to_google_chat(webhook_url, article)
+        success = _send_gmail(smtp_user, smtp_password, to_email, article)
         if success:
             seen_urls.add(article["url"])
 

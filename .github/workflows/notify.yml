@@ -26,8 +26,10 @@ jobs:
 
       - name: Run notifier
         env:
-          GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NOTIFY_TO_EMAIL: ${{ secrets.NOTIFY_TO_EMAIL }}
         run: python notifier.py
 
       - name: Commit and push last_seen.json
